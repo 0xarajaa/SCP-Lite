@@ -1,251 +1,151 @@
-# SCP-Lite: Secure Communication Protocol
+# SCP-Lite
 
-## Project Overview
+**Educational secure client-server communication protocol created by Ahmad Araja (ARAJAA).**
 
-SCP-Lite is an educational secure client-server communication protocol implemented in Python.
+SCP-Lite demonstrates a complete encrypted TCP session in Python: RSA-OAEP transports a fresh AES session key, AES-GCM protects authentication and application messages, and length-prefixed framing preserves message boundaries over TCP.
 
-The project demonstrates how a client and a server can establish a protected communication session using:
+> SCP-Lite is an educational prototype, not a production protocol. The server public key is not certificate-authenticated, the shared token is embedded in source, and replay protection is incomplete.
 
-* RSA-OAEP for secure AES session key exchange
-* AES-GCM for encrypted communication
-* A pre-shared authentication token for basic client authentication
-* Fresh random nonces for encrypted messages
-* Length-prefixed message framing over TCP sockets
+## Architecture
 
-This project was developed for the Secure Communication Protocols course.
+```mermaid
+flowchart LR
+    CLIENT["Python client"] <-->|"length-prefixed TCP"| SERVER["Python server"]
+    SERVER -->|"ephemeral RSA-2048 public key"| CLIENT
+    CLIENT -->|"AES-128 session key<br/>encrypted with RSA-OAEP"| SERVER
+    CLIENT -->|"encrypted authentication token"| SERVER
+    CLIENT <-->|"AES-GCM messages<br/>fresh 12-byte nonce"| SERVER
+```
 
----
+![SCP-Lite protocol sequence](SCP-LiteDiagram.png)
 
-## Security Goals
+## Protocol flow
 
-### 1. Confidentiality
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    S->>S: Generate RSA-2048 key pair
+    C->>S: Open TCP connection
+    S-->>C: RSA public key in PEM format
+    C->>C: Generate AES-128 session key
+    C->>S: RSA-OAEP encrypted session key
+    S->>S: Recover AES session key
+    C->>S: AES-GCM encrypted authentication token
+    S->>S: Decrypt and compare token
+    C->>S: Nonce + encrypted message
+    S->>S: Verify tag and decrypt
+    S-->>C: Response nonce + encrypted response
+    C->>C: Verify tag and decrypt
+```
 
-Messages are encrypted using AES-GCM, preventing unauthorized parties from reading plaintext messages.
-
-### 2. Integrity
-
-AES-GCM provides authentication and integrity protection. If encrypted data is modified during transmission, decryption fails.
-
-### 3. Secure Session Key Exchange
-
-The client generates an AES session key and encrypts it using the server RSA public key with RSA-OAEP and SHA-256.
-
-### 4. Client Authentication
-
-The client encrypts a pre-shared authentication token using AES-GCM. The server decrypts the token and verifies it before accepting the secure session.
-
-### 5. Reliable Message Framing
-
-The protocol uses a 4-byte length prefix before every transmitted data block. This helps the receiver know exactly how many bytes must be read from the TCP stream.
-
----
-
-## Technologies Used
-
-* Python 3
-* TCP sockets
-* cryptography library
-* RSA-OAEP
-* AES-GCM
-* SHA-256
-* PyCharm
-
----
-
-## Project Structure
+Every binary field is transported using a four-byte, big-endian length prefix:
 
 ```text
-SCP-Lite/
-│
-├── client.py
-├── server.py
-├── crypto_utils.py
-├── test_crypto.py
-├── protocol.md
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── SCP-LiteDiagram.png
+[4-byte length][data bytes]
 ```
 
----
+## Security properties demonstrated
 
-## How the Protocol Works
+| Goal | Mechanism |
+|---|---|
+| Session-key confidentiality | RSA-OAEP with SHA-256 |
+| Message confidentiality | AES-GCM with a 128-bit key |
+| Message integrity | AES-GCM authentication tag |
+| Client knowledge check | AES-GCM encrypted pre-shared token |
+| Nonce freshness | New random 12-byte nonce per encryption |
+| TCP framing | Four-byte big-endian length prefix |
 
-### Step 1: Server Initialization
+## Repository structure
 
-The server starts listening on `127.0.0.1:9999` and generates an RSA key pair.
+```text
+.
+|-- client.py          # Connects, establishes a key, authenticates, and exchanges data
+|-- server.py          # Listens, creates RSA keys, authenticates, and exchanges data
+|-- crypto_utils.py    # RSA, AES-GCM, framing, and exact-receive helpers
+|-- test_crypto.py     # Local cryptographic round-trip check
+|-- protocol.md        # Detailed protocol specification
+|-- SCP-LiteDiagram.png
+|-- requirements.txt
+`-- README.md
+```
 
-### Step 2: Client Connection
+## Requirements
 
-The client establishes a TCP connection with the server.
-
-### Step 3: Public Key Transfer
-
-The server sends its RSA public key to the client in PEM format.
-
-### Step 4: AES Session Key Generation
-
-The client generates a random AES-GCM session key.
-
-### Step 5: Secure Session Key Exchange
-
-The client encrypts the AES session key using the server RSA public key with RSA-OAEP.
-
-The server decrypts the session key using its RSA private key.
-
-At this point, both sides share the same AES session key.
-
-### Step 6: Client Authentication
-
-The client encrypts a pre-shared authentication token using AES-GCM and sends it to the server.
-
-The server decrypts the token and compares it with the expected value.
-
-If the token is correct, the session continues.
-
-If the token is incorrect, the server closes the connection.
-
-### Step 7: Secure Message Transfer
-
-The client encrypts a message using AES-GCM and sends the nonce and ciphertext to the server.
-
-### Step 8: Secure Server Response
-
-The server decrypts the client message, writes a response, encrypts it using AES-GCM, and sends the encrypted response back to the client.
-
----
-
-## How to Run
-
-### 1. Install dependencies
+- Python 3.10 or newer
+- `cryptography`
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-### 2. Run the server
+## Run
 
-Open the first terminal and run:
+Start server in first terminal:
 
 ```bash
 python server.py
 ```
 
-### 3. Run the client
-
-Open a second terminal and run:
+Start client in second terminal:
 
 ```bash
 python client.py
 ```
 
-### 4. Run the crypto test
+Default endpoint:
+
+```text
+127.0.0.1:9999
+```
+
+## Test cryptographic primitives
 
 ```bash
 python test_crypto.py
 ```
 
-Expected result:
+Expected final line:
 
 ```text
 Test Passed: Encryption, decryption, and authentication token work correctly.
 ```
 
----
+The test confirms RSA session-key round-trip, AES-GCM message round-trip, and authentication-token round-trip. It is not a complete security proof or network integration test.
 
-## Example Output
+## Trust boundary and limitations
 
-### Server
-
-```text
-[SERVER] Listening on 127.0.0.1:9999...
-[SERVER] RSA keys generated.
-[SERVER] Connection received from ('127.0.0.1', 50000)
-[SERVER] Public key sent to client.
-[SERVER] Session key decrypted.
-[SERVER] Client authenticated successfully.
-[SERVER] Nonce received.
-[SERVER] Ciphertext received.
-[SERVER] Secure message from client: Hello Server
-Enter secure reply to client: Hello Client
-[SERVER] Secure response sent.
-[SERVER] Connection closed.
+```mermaid
+flowchart TD
+    ATTACKER["Untrusted network"] --> TCP["TCP connection"]
+    TCP --> KEY["Unauthenticated server public key"]
+    KEY --> SESSION["Encrypted session"]
+    TOKEN["Static token in client and server source"] --> SESSION
+    SESSION --> LIMIT["Educational confidentiality and integrity demo"]
 ```
 
-### Client
+Current design does not provide:
 
-```text
-[CLIENT] Connected to server 127.0.0.1:9999
-[CLIENT] Server public key received.
-[CLIENT] AES session key generated.
-[CLIENT] Encrypted session key sent.
-[CLIENT] Authentication token sent securely.
-Enter a secure message: Hello Server
-[CLIENT] Message encrypted.
-[CLIENT] Secure message sent.
-[CLIENT] Secure response from server: Hello Client
-[CLIENT] Connection closed.
-```
+- Certificate validation or authenticated server identity
+- Protection against an active man-in-the-middle during initial key delivery
+- Mutual authentication
+- Secure secret provisioning or persistent key storage
+- Complete replay protection
+- Multi-client concurrency
+- Production-grade error handling, logging, or protocol negotiation
 
----
+For real systems, use a reviewed protocol such as TLS rather than designing a custom transport protocol.
 
-## Cryptographic Algorithms
+## Documentation
 
-| Purpose               | Algorithm                  |
-| --------------------- | -------------------------- |
-| Asymmetric Encryption | RSA-OAEP                   |
-| RSA Key Size          | 2048-bit                   |
-| OAEP Hash Function    | SHA-256                    |
-| Symmetric Encryption  | AES-GCM                    |
-| AES Key Size          | 128-bit                    |
-| Nonce Size            | 12 bytes                   |
-| Authentication        | Pre-shared encrypted token |
-| Message Framing       | 4-byte length prefix       |
+Read [protocol.md](protocol.md) for message order, algorithms, framing, authentication, limitations, and planned improvements.
 
----
+## Author
 
-## Limitations
+Created by **Ahmad Araja (ARAJAA)** for educational study of secure communication protocols.
 
-This project is an educational prototype and is not intended for production use.
+[Connect with me on LinkedIn](https://www.linkedin.com/in/ahmadaraja)
 
-It does not currently include:
+## Authorized use
 
-* Digital certificates
-* Certificate Authority validation
-* Mutual authentication
-* Multi-client support
-* Persistent key storage
-* Timestamp-based replay protection
-* Production-level security hardening
-
----
-
-## Future Improvements
-
-The protocol can be improved by adding:
-
-* Digital certificate validation
-* Server identity verification
-* Mutual authentication
-* Multi-client support
-* Timestamp-based replay protection
-* Better exception handling
-* Persistent key storage
-* Logging system
-* Graphical user interface
-
----
-
-## Authors
-
-##### Ahmad Araja
----
-
-## Conclusion
-
-SCP-Lite demonstrates the core design of a secure communication protocol.
-
-It combines RSA-OAEP for secure session key exchange, AES-GCM for encrypted communication, and a pre-shared authentication token for basic client authentication.
-
-The project satisfies the educational goal of designing and implementing a secure communication protocol prototype.
+Use this project only for education, local experimentation, and authorized security research.
