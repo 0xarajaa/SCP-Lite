@@ -6,38 +6,19 @@ SCP-Lite demonstrates a complete encrypted TCP session in Python: RSA-OAEP trans
 
 > SCP-Lite is an educational prototype, not a production protocol. The server public key is not certificate-authenticated, the shared token is embedded in source, and replay protection is incomplete.
 
-## Architecture
-
-```mermaid
-flowchart LR
-    CLIENT["Python client"] <-->|"length-prefixed TCP"| SERVER["Python server"]
-    SERVER -->|"ephemeral RSA-2048 public key"| CLIENT
-    CLIENT -->|"AES-128 session key<br/>encrypted with RSA-OAEP"| SERVER
-    CLIENT -->|"encrypted authentication token"| SERVER
-    CLIENT <-->|"AES-GCM messages<br/>fresh 12-byte nonce"| SERVER
-```
+## Protocol architecture
 
 ![SCP-Lite protocol sequence](SCP-LiteDiagram.png)
 
 ## Protocol flow
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-    S->>S: Generate RSA-2048 key pair
-    C->>S: Open TCP connection
-    S-->>C: RSA public key in PEM format
-    C->>C: Generate AES-128 session key
-    C->>S: RSA-OAEP encrypted session key
-    S->>S: Recover AES session key
-    C->>S: AES-GCM encrypted authentication token
-    S->>S: Decrypt and compare token
-    C->>S: Nonce + encrypted message
-    S->>S: Verify tag and decrypt
-    S-->>C: Response nonce + encrypted response
-    C->>C: Verify tag and decrypt
-```
+1. Server generates an ephemeral RSA-2048 key pair and listens on TCP.
+2. Client connects and receives the server public key in PEM format.
+3. Client generates an AES-128 session key and encrypts it with RSA-OAEP and SHA-256.
+4. Server decrypts the session key with its RSA private key.
+5. Client sends the pre-shared authentication token protected by AES-GCM.
+6. Server verifies the token before accepting an application message.
+7. Client and server exchange AES-GCM ciphertexts using a fresh 12-byte nonce for each encryption.
 
 Every binary field is transported using a four-byte, big-endian length prefix:
 
@@ -115,15 +96,6 @@ The test confirms RSA session-key round-trip, AES-GCM message round-trip, and au
 
 ## Trust boundary and limitations
 
-```mermaid
-flowchart TD
-    ATTACKER["Untrusted network"] --> TCP["TCP connection"]
-    TCP --> KEY["Unauthenticated server public key"]
-    KEY --> SESSION["Encrypted session"]
-    TOKEN["Static token in client and server source"] --> SESSION
-    SESSION --> LIMIT["Educational confidentiality and integrity demo"]
-```
-
 Current design does not provide:
 
 - Certificate validation or authenticated server identity
@@ -149,3 +121,7 @@ Created by **Ahmad Araja (ARAJAA)** for educational study of secure communicatio
 ## Authorized use
 
 Use this project only for education, local experimentation, and authorized security research.
+
+## License
+
+SCP-Lite source code and documentation are licensed under the [MIT License](LICENSE).
